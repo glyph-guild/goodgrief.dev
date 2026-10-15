@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Good Grief</title>
+<meta name="description" content="Good Grief: autonomous AI agent orchestration.">
+<meta property="og:title" content="Good Grief">
+<meta property="og:description" content="Autonomous AI agent orchestration.">
+<meta name="theme-color" content="#1e1e24">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='12' fill='%231e1e24'/%3E%3Ctext x='32' y='42' font-family='ui-monospace,Menlo,monospace' font-size='30' font-weight='700' fill='%237cb0cc' text-anchor='middle'%3Egg%3C/text%3E%3C/svg%3E">
+<style>
+  :root {
+    --ground: #1e1e24;
+    --ink: #d7dae0;
+    --quiet: #8b93a1;
+    --mark: #7cb0cc;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    background: var(--ground);
+    color: var(--ink);
+    font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    display: grid;
+    place-items: center;
+    padding: 24px 16px;
+  }
+  main { text-align: center; }
+  pre {
+    margin: 0 auto 2.5rem;
+    color: var(--mark);
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: clamp(11px, 3.6vw, 22px);
+    line-height: 1.15;
+    width: max-content;
+    text-align: left;
+    user-select: none;
+  }
+  h1 {
+    margin: 0;
+    font-size: clamp(1.6rem, 5vw, 2.4rem);
+    font-weight: 650;
+    letter-spacing: -0.01em;
+  }
+  p.tagline {
+    margin: 0.6rem 0 2.2rem;
+    color: var(--quiet);
+    font-size: clamp(1rem, 3vw, 1.2rem);
+  }
+  a.docs {
+    display: inline-block;
+    padding: 0.7rem 1.4rem;
+    border: 1px solid var(--mark);
+    border-radius: 8px;
+    color: var(--mark);
+    text-decoration: none;
+    font-weight: 600;
+  }
+  a.docs:hover, a.docs:focus-visible { background: var(--mark); color: var(--ground); outline: none; }
+  footer { margin-top: 2.5rem; font-size: 0.85rem; }
+  footer a { color: var(--quiet); }
+</style>
+</head>
+<body>
+<main>
+  <pre id="mark" aria-hidden="true">   ,gggg,gg    ,gggg,gg
+  dP"  "Y8I   dP"  "Y8I
+ i8'    ,8I  i8'    ,8I
+,d8,   ,d8I ,d8,   ,d8I
+P"Y8888P"888P"Y8888P"888
+       ,d8I'       ,d8I'
+     ,dP'8I      ,dP'8I
+    ,8"  8I     ,8"  8I
+    I8   8I     I8   8I
+    `8, ,8I     `8, ,8I
+     `Y8P"       `Y8P"  </pre>
+  <h1>Good Grief</h1>
+  <p class="tagline">Autonomous AI agent orchestration</p>
+  <a class="docs" href="https://docs.goodgrief.dev/">Read the documentation</a>
+  <footer><a href="https://github.com/glyph-guild/gg">gg on GitHub</a></footer>
+</main>
+<script>
+  // The gg console's screensaver mark: it breathes on a cosine between 35% and
+  // full brightness, and while it is dim a few of its characters shimmer into
+  // other characters from the same mark. Ported from Gg.Console/State/LoadingArt.cs.
+  (function () {
+    var pre = document.getElementById("mark");
+    var mark = pre.textContent.split("\n");
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+
+    var ink = Array.from(new Set(mark.join("").replace(/ /g, ""))).sort();
+    var breath = 40;
+    var dimmest = 0.35;
+
+    function scatter(tick, row, col) {
+      var m = (Math.imul(tick, 2654435761) ^ Math.imul(row, 40503) ^ Math.imul(col, 12289)) >>> 0;
+      m ^= m >>> 15; m = Math.imul(m, 2246822519) >>> 0;
+      m ^= m >>> 13; m = Math.imul(m, 3266489917) >>> 0;
+      return (m ^ (m >>> 16)) >>> 0;
+    }
+
+    var tick = 0;
+    function step() {
+      var at = tick % breath;
+      var wave = (1 - Math.cos(2 * Math.PI * at / breath)) / 2;
+      var churn = 0.18 * (1 - wave) * 4294967295;
+      pre.textContent = mark.map(function (line, row) {
+        return Array.from(line).map(function (here, col) {
+          if (here === " " || scatter(at, row, col) >= churn) return here;
+          return ink[scatter(at + 7919, row, col) % ink.length];
+        }).join("");
+      }).join("\n");
+      pre.style.opacity = dimmest + (1 - dimmest) * wave;
+      tick++;
+    }
+    step();
+    setInterval(step, 100);
+  })();
+</script>
+</body>
+</html>

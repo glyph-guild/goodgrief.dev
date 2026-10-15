@@ -32,18 +32,41 @@
   }
   main { text-align: center; }
   pre {
-    margin: 0 auto 2.5rem;
+    margin: 0 auto;
     color: var(--mark);
     font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
     font-weight: 200;
+    font-variant-ligatures: none;
+    font-feature-settings: "liga" 0, "calt" 0;
     font-size: clamp(11px, 3.6vw, 22px);
     line-height: 1.15;
     width: max-content;
     text-align: left;
     user-select: none;
   }
-  @media (prefers-reduced-motion: reduce) {
-    h1 {
+  .markwrap {
+    position: relative;
+    width: max-content;
+    margin: 0 auto 2.5rem;
+  }
+  .markwrap pre { margin: 0; }
+  #mark .craft { color: #ffffff; font-weight: 500; text-shadow: 0 0 6px rgba(207, 230, 241, 0.7); }
+  /* The aircraft in open air: positioned in pixels so it glides between columns. */
+  #flyer {
+    position: absolute;
+    top: 0;
+    left: 0;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    font-family: "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif;
+    line-height: 1;
+    pointer-events: none;
+    will-change: transform;
+  }
+  #flyer span { display: block; }
+  #mark .trail { color: rgba(230, 242, 248, 0.6); font-weight: 400; }
+  h1 {
     margin: 0;
     font-size: clamp(1.6rem, 5vw, 2.4rem);
     font-weight: 300;
@@ -70,6 +93,7 @@
 </head>
 <body>
 <main>
+  <div class="markwrap">
   <pre id="mark" aria-hidden="true">   ,gggg,gg    ,gggg,gg
   dP"  "Y8I   dP"  "Y8I
  i8'    ,8I  i8'    ,8I
@@ -81,6 +105,8 @@ P"Y8888P"888P"Y8888P"888
     I8   8I     I8   8I
     `8, ,8I     `8, ,8I
      `Y8P"       `Y8P"  </pre>
+  <div id="flyer" aria-hidden="true"><span>✈️</span></div>
+  </div>
   <h1>Good Grief</h1>
   <p class="tagline">Autonomous AI agent orchestration</p>
   <a class="docs" href="https://docs.goodgrief.dev/start-here/what-good-grief-is/">Read the documentation</a>
@@ -93,18 +119,85 @@ P"Y8888P"888P"Y8888P"888
   // into other characters from the same mark.
   (function () {
     var pre = document.getElementById("mark");
-    var mark = pre.textContent.split("\n");
+    var flyer = document.getElementById("flyer");
+    var glyph = flyer.firstElementChild;
+    var pad = 9;                        // blank columns either side
+    var mark = pre.textContent.split("\n").map(function (line) {
+      return " ".repeat(pad) + line.padEnd(24) + " ".repeat(pad);
+    });
+    var width = mark[0].length, rows = mark.length;
     var ink = Array.from(new Set(mark.join("").replace(/ /g, ""))).sort();
 
-    // ONE CYCLE: fade up, hold at full brightness with no shimmer, fade down.
-    var fade = 40;       // ticks for the whole fade, up and down together
-    var hold = 25;       // ticks held bright and still
-    var cycle = fade + hold;
-    var dimmest = 0.35;
-    var interval = 60;   // milliseconds per tick
+    // ONE BREATH: fade up, hold at full brightness with no shimmer, fade down.
+    var fade = 40, hold = 25, cycle = fade + hold, dimmest = 0.35, interval = 60;
 
-    function scatter(tick, row, col) {
-      var m = (Math.imul(tick, 2654435761) ^ Math.imul(row, 40503) ^ Math.imul(col, 12289)) >>> 0;
+    function solid(r, c) { return r >= 0 && r < rows && c >= 0 && c < width && mark[r][c] !== " "; }
+
+    // THE SOLID LINES: every unbroken run of at least four characters, across, down
+    // and along both diagonals. Each pass of the aircraft follows one of them.
+    var axes = [[0, 1], [1, 0], [1, 1], [1, -1]];     // [row step, column step]
+    var runs = [];
+    axes.forEach(function (axis) {
+      for (var r = 0; r < rows; r++) {
+        for (var c = 0; c < width; c++) {
+          if (!solid(r, c) || solid(r - axis[0], c - axis[1])) continue;   // not a run's start
+          var n = 0;
+          while (solid(r + n * axis[0], c + n * axis[1])) n++;
+          if (n >= 4) runs.push({ r: r, c: c, dr: axis[0], dc: axis[1], n: n });
+        }
+      }
+    });
+
+    // THE AIRCRAFT IN CHARACTERS, by direction: tail, body, nose, then its contrail.
+    function shapeFor(dr, dc) {
+      if (dr === 0) return dc > 0 ? { craft: "-=>", trail: "..-" } : { craft: "-=<", trail: "..-" };
+      if (dc === 0) return dr > 0 ? { craft: "||v", trail: "..:" } : { craft: "||^", trail: "..:" };
+      var slash = dr === dc ? "\\" : "/";
+      return { craft: slash + slash + (dr > 0 ? "v" : "^"), trail: "..." };
+    }
+
+    // ONE PASS: a run picked at random (longer runs more often) and a direction along it,
+    // flown from outside the mark, along the whole line, and out the other side.
+    var columnEvery = 7;                // ticks per cell: about 0.4 s
+    var gap = 25;                       // ticks of empty sky between passes
+    var pass = null;
+
+    function choose(atTick) {
+      var total = runs.reduce(function (sum, run) { return sum + run.n; }, 0);
+      var pick = Math.random() * total, run = runs[0];
+      for (var i = 0; i < runs.length; i++) { pick -= runs[i].n; if (pick <= 0) { run = runs[i]; break; } }
+      var forward = Math.random() < 0.5;
+      var dr = forward ? run.dr : -run.dr, dc = forward ? run.dc : -run.dc;
+      var r0 = forward ? run.r : run.r + (run.n - 1) * run.dr;
+      var c0 = forward ? run.c : run.c + (run.n - 1) * run.dc;
+      // The sky the aircraft may fly in: the padded mark, and two rows above and below it.
+      function inSky(r, c) { return r >= -2 && r <= rows + 1 && c >= -2 && c <= width + 1; }
+      var back = 0, ahead = 0;
+      while (inSky(r0 - (back + 1) * dr, c0 - (back + 1) * dc)) back++;
+      while (inSky(r0 + (ahead + 1) * dr, c0 + (ahead + 1) * dc)) ahead++;
+      var shape = shapeFor(dr, dc);
+      return {
+        r: r0 - back * dr, c: c0 - back * dc, dr: dr, dc: dc,
+        steps: back + ahead, start: atTick, shape: shape,
+      };
+    }
+
+    // Where along the current pass the aircraft's nose is, in cells (fractional).
+    function along(ticks) { return (ticks - pass.start) / columnEvery; }
+
+    function cell(at) { return { r: pass.r + at * pass.dr, c: pass.c + at * pass.dc }; }
+
+    // Whether the character version would cover part of the mark with its nose at step k.
+    function touching(k) {
+      for (var j = -1; j <= 2; j++) {
+        var x = cell(k - 1 + j);        // the three cells it covers, and one ahead
+        if (solid(x.r, x.c)) return true;
+      }
+      return false;
+    }
+
+    function scatter(tick, r, col) {
+      var m = (Math.imul(tick, 2654435761) ^ Math.imul(r, 40503) ^ Math.imul(col, 12289)) >>> 0;
       m ^= m >>> 15; m = Math.imul(m, 2246822519) >>> 0;
       m ^= m >>> 13; m = Math.imul(m, 3266489917) >>> 0;
       return (m ^ (m >>> 16)) >>> 0;
@@ -117,22 +210,74 @@ P"Y8888P"888P"Y8888P"888
       return (1 - Math.cos(2 * Math.PI * at / fade)) / 2;
     }
 
-    var tick = 0;
-    function step() {
+    function escape(c) {
+      return c === "<" ? "&lt;" : c === ">" ? "&gt;" : c === "&" ? "&amp;" : c;
+    }
+
+    function draw(tick) {
       var wave = brightness(tick % cycle);
-      // The shimmer is strongest when the mark is dim and stops while it holds bright.
       var churn = 0.28 * (1 - wave) * 4294967295;
-      pre.textContent = mark.map(function (line, row) {
+      var grid = mark.map(function (line, r) {
         return Array.from(line).map(function (here, col) {
-          if (here === " " || scatter(tick, row, col) >= churn) return here;
-          return ink[scatter(tick + 7919, row, col) % ink.length];
+          var c = here === " " || scatter(tick, r, col) >= churn
+            ? here : ink[scatter(tick + 7919, r, col) % ink.length];
+          return { c: c, cls: null };
+        });
+      });
+
+      var k = Math.floor(along(tick));
+      if (k >= 0 && k <= pass.steps && touching(k)) {
+        // Nose one cell further on than the emoji was, so the change reads as moving.
+        var put = function (offset, ch, cls) {
+          var x = cell(k + 1 + offset);
+          if (x.r >= 0 && x.r < rows && x.c >= 0 && x.c < width) grid[x.r][x.c] = { c: ch, cls: cls };
+        };
+        Array.from(pass.shape.craft).forEach(function (ch, j) { put(j - 2, ch, "craft"); });
+        Array.from(pass.shape.trail).forEach(function (ch, j) { put(j - 5, ch, "trail"); });
+      }
+
+      pre.innerHTML = grid.map(function (line) {
+        return line.map(function (c) {
+          var e = escape(c.c);
+          return c.cls ? '<span class="' + c.cls + '">' + e + "</span>" : e;
         }).join("");
       }).join("\n");
-      pre.style.opacity = dimmest + (1 - dimmest) * wave;
-      tick++;
+      pre.style.color = "rgba(124, 176, 204, " + (dimmest + (1 - dimmest) * wave).toFixed(3) + ")";
     }
-    step();
-    setInterval(step, interval);
+
+    // The emoji, between cells, at the line's true angle on screen (cells are taller than
+    // they are wide). Hidden while the character version is in the text; faded at the ends.
+    function glide(ticks) {
+      var at = along(ticks);
+      if (at < 0 || at > pass.steps || touching(Math.floor(at))) {
+        flyer.style.display = "none";
+        return;
+      }
+      var box = pre.getBoundingClientRect();
+      var cw = box.width / width, lh = box.height / rows;
+      var x = cell(at);
+      var angle = Math.atan2(pass.dr * lh, pass.dc * cw) * 180 / Math.PI;
+      var edge = Math.min(at, pass.steps - at);
+      flyer.style.display = "flex";
+      flyer.style.opacity = Math.min(1, edge / 2).toFixed(3);
+      flyer.style.width = cw + "px";
+      flyer.style.height = lh + "px";
+      flyer.style.fontSize = (lh * 0.82) + "px";
+      flyer.style.transform = "translate(" + (x.c * cw) + "px, " + (x.r * lh) + "px)";
+      glyph.style.transform = "rotate(" + (angle + 45).toFixed(1) + "deg)";   // the emoji points up-right
+    }
+
+    var start = performance.now();
+    var drawn = -1;
+    function frame(now) {
+      var ticks = (now - start) / interval;
+      if (!pass || along(ticks) > pass.steps + gap / columnEvery) pass = choose(ticks);
+      var tick = Math.floor(ticks);
+      if (tick !== drawn) { draw(tick); drawn = tick; }
+      glide(ticks);
+      requestAnimationFrame(frame);
+    }
+    requestAnimationFrame(frame);
   })();
 </script>
 </body>

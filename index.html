@@ -8,6 +8,9 @@
 <meta property="og:title" content="Good Grief">
 <meta property="og:description" content="Autonomous AI agent orchestration.">
 <meta name="theme-color" content="#1e1e24">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@200;300&family=Inter:wght@300;400&display=swap" rel="stylesheet">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='12' fill='%231e1e24'/%3E%3Ctext x='32' y='42' font-family='ui-monospace,Menlo,monospace' font-size='30' font-weight='700' fill='%237cb0cc' text-anchor='middle'%3Egg%3C/text%3E%3C/svg%3E">
 <style>
   :root {
@@ -21,7 +24,8 @@
   body {
     background: var(--ground);
     color: var(--ink);
-    font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    font-family: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    font-weight: 300;
     display: grid;
     place-items: center;
     padding: 24px 16px;
@@ -30,18 +34,20 @@
   pre {
     margin: 0 auto 2.5rem;
     color: var(--mark);
-    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-weight: 200;
     font-size: clamp(11px, 3.6vw, 22px);
     line-height: 1.15;
     width: max-content;
     text-align: left;
     user-select: none;
   }
-  h1 {
+  @media (prefers-reduced-motion: reduce) {
+    h1 {
     margin: 0;
     font-size: clamp(1.6rem, 5vw, 2.4rem);
-    font-weight: 650;
-    letter-spacing: -0.01em;
+    font-weight: 300;
+    letter-spacing: 0.01em;
   }
   p.tagline {
     margin: 0.6rem 0 2.2rem;
@@ -55,7 +61,7 @@
     border-radius: 8px;
     color: var(--mark);
     text-decoration: none;
-    font-weight: 600;
+    font-weight: 400;
   }
   a.docs:hover, a.docs:focus-visible { background: var(--mark); color: var(--ground); outline: none; }
   footer { margin-top: 2.5rem; font-size: 0.85rem; }
@@ -81,17 +87,21 @@ P"Y8888P"888P"Y8888P"888
   <footer><a href="https://github.com/glyph-guild/gg">gg on GitHub</a></footer>
 </main>
 <script>
-  // The gg console's screensaver mark: it breathes on a cosine between 35% and
-  // full brightness, and while it is dim a few of its characters shimmer into
-  // other characters from the same mark. Ported from Gg.Console/State/LoadingArt.cs.
+  // The gg console's screensaver mark, ported from Gg.Console/State/LoadingArt.cs:
+  // it fades between 35% and full brightness on a cosine, holds still at full
+  // brightness for a moment, and while it is dim some of its characters shimmer
+  // into other characters from the same mark.
   (function () {
     var pre = document.getElementById("mark");
     var mark = pre.textContent.split("\n");
-    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
-
     var ink = Array.from(new Set(mark.join("").replace(/ /g, ""))).sort();
-    var breath = 40;
+
+    // ONE CYCLE: fade up, hold at full brightness with no shimmer, fade down.
+    var fade = 40;       // ticks for the whole fade, up and down together
+    var hold = 25;       // ticks held bright and still
+    var cycle = fade + hold;
     var dimmest = 0.35;
+    var interval = 60;   // milliseconds per tick
 
     function scatter(tick, row, col) {
       var m = (Math.imul(tick, 2654435761) ^ Math.imul(row, 40503) ^ Math.imul(col, 12289)) >>> 0;
@@ -100,22 +110,29 @@ P"Y8888P"888P"Y8888P"888
       return (m ^ (m >>> 16)) >>> 0;
     }
 
+    function brightness(phase) {
+      var top = fade / 2;
+      if (phase >= top && phase < top + hold) return 1;
+      var at = phase < top ? phase : phase - hold;
+      return (1 - Math.cos(2 * Math.PI * at / fade)) / 2;
+    }
+
     var tick = 0;
     function step() {
-      var at = tick % breath;
-      var wave = (1 - Math.cos(2 * Math.PI * at / breath)) / 2;
-      var churn = 0.18 * (1 - wave) * 4294967295;
+      var wave = brightness(tick % cycle);
+      // The shimmer is strongest when the mark is dim and stops while it holds bright.
+      var churn = 0.28 * (1 - wave) * 4294967295;
       pre.textContent = mark.map(function (line, row) {
         return Array.from(line).map(function (here, col) {
-          if (here === " " || scatter(at, row, col) >= churn) return here;
-          return ink[scatter(at + 7919, row, col) % ink.length];
+          if (here === " " || scatter(tick, row, col) >= churn) return here;
+          return ink[scatter(tick + 7919, row, col) % ink.length];
         }).join("");
       }).join("\n");
       pre.style.opacity = dimmest + (1 - dimmest) * wave;
       tick++;
     }
     step();
-    setInterval(step, 100);
+    setInterval(step, interval);
   })();
 </script>
 </body>

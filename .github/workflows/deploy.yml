@@ -1,0 +1,95 @@
+# Builds goodgrief.dev: the front page, plus the newest gg release's installers,
+# so that `curl -fsSL https://goodgrief.dev/install.sh | sudo sh` works.
+#
+# THE INSTALLERS ARE NEVER STORED IN THIS REPOSITORY. Each deploy downloads them
+# from the newest gg release and refuses to publish unless GitHub's attestation
+# shows gg's own release workflow built those exact bytes. A copy kept here
+# could be edited; a copy fetched and verified on every deploy cannot drift from
+# the release it came from.
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+  # A backstop: a new gg release reaches this site within half an hour even
+  # though gg's release does not tell this repository about itself.
+  schedule:
+    - cron: "17,47 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+  attestations: read
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    outputs:
+      changed: ${{ steps.compare.outputs.changed }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Fetch the newest gg release's installers and verify them
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -eu
+          mkdir -p _site
+          cp index.html CNAME _site/
+
+          # ONE RELEASE FOR BOTH FILES: resolve the tag once, then download by
+          # tag, so a release published mid-run cannot mix two versions.
+          latest=$(curl -fsSLo /dev/null -w '%{url_effective}' https://github.com/glyph-guild/gg/releases/latest)
+          version=${latest##*/v}
+          case "$version" in
+            ''|*[!0-9A-Za-z.+-]*) echo "The newest gg release could not be identified from '$latest'."; exit 1 ;;
+          esac
+          echo "Newest gg release: v$version"
+
+          for f in install.sh install.ps1; do
+            curl -fsSL -o "_site/$f" "https://github.com/glyph-guild/gg/releases/download/v$version/$f"
+            # Built by gg's release workflow, byte for byte, or this deploy stops.
+            gh attestation verify "_site/$f" \
+              --repo glyph-guild/gg \
+              --signer-workflow glyph-guild/gg/.github/workflows/publish-cli.yml
+            (cd _site && sha256sum "$f" > "$f.sha256")
+          done
+          echo "v$version" > _site/install-version.txt
+
+      - name: Compare with what goodgrief.dev serves now
+        id: compare
+        run: |
+          set -u
+          changed=true
+          if [ "${{ github.event_name }}" = "schedule" ]; then
+            same=yes
+            for f in install.sh install.ps1; do
+              live=$(curl -fsSL "https://goodgrief.dev/$f.sha256" 2>/dev/null || true)
+              [ "$live" = "$(cat "_site/$f.sha256")" ] || same=no
+            done
+            [ "$same" = yes ] && changed=false
+          fi
+          echo "changed=$changed" >> "$GITHUB_OUTPUT"
+          echo "Deploy needed: $changed"
+
+      - uses: actions/upload-pages-artifact@v5
+        if: steps.compare.outputs.changed == 'true'
+        with:
+          path: _site
+
+  deploy:
+    needs: build
+    if: needs.build.outputs.changed == 'true'
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v5
